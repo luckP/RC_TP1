@@ -194,9 +194,6 @@ public class Server
 
 
 
-
-
-
   // Por que essa parte nao é executada quando se executa o comando sc.write(buffer)?
     // If no data, close the connection
     // if (buffer.limit()==0) {

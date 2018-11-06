@@ -13,14 +13,11 @@ public class Server
   // Decoder for incoming text -- assume UTF-8
   static private final Charset charset = Charset.forName("UTF8");
   static private final CharsetDecoder decoder = charset.newDecoder();
-  static Selector selector;
-
-
 
   static public void main( String args[] ) throws Exception {
     // Parse port from command line
     int port = Integer.parseInt( args[0] );
-
+    
     try {
       // Instead of creating a ServerSocket, create a ServerSocketChannel
       ServerSocketChannel ssc = ServerSocketChannel.open();
@@ -35,7 +32,7 @@ public class Server
       ss.bind( isa );
 
       // Create a new Selector for selecting
-      selector = Selector.open();
+      Selector selector = Selector.open();
 
       // Register the ServerSocketChannel, so we can listen for incoming
       // connections
@@ -51,7 +48,6 @@ public class Server
         if (num == 0) {
           continue;
         }
-
 
         // Get the keys corresponding to the activity that has been
         // detected, and process them one by one
@@ -87,7 +83,7 @@ public class Server
 
               // It's incoming data on a connection -- process it
               sc = (SocketChannel)key.channel();
-              boolean ok = processInput( sc);
+              boolean ok = processInput( sc, selector );
 
               // If the connection is dead, remove it from the selector
               // and close it
@@ -128,86 +124,130 @@ public class Server
 
 
   // Just read the message from the socket and send it to stdout
-  static private boolean processInput( SocketChannel sc) throws IOException {
+  static private boolean processInput( SocketChannel sc, Selector selector ) throws IOException {
     // Read the message to the buffer
     buffer.clear();
     sc.read( buffer );
     buffer.flip();
-    // sc.write(buffer);
-    // buffer.rewind();
 
-
-
-
-
-
-
-
-  int cont = 0;
-    // buffer.flip();
-
-    Set<SelectionKey> keys = selector.selectedKeys();
-    Iterator<SelectionKey> it = keys.iterator();
-    // buffer.flip();
-    // it.next();
-    while (it.hasNext()) {
-      // Get a key representing one of bits of I/O activity
-      SelectionKey key = it.next();
-      SocketChannel s = (SocketChannel)key.channel();
-      System.out.println(cont);
-      if(key.isAcceptable()){
-        continue;
-      }
-
-      // key.interestOps(SelectionKey.OP_WRITE|SelectionKey.OP_READ);
-      s.write(buffer);
-      buffer.rewind();
-
-
-        // try {
-
-        //   // It's incoming data on a connection -- process it
-        //   SocketChannel sc2 = (SocketChannel)key.channel();
-        //   sc2.write(buffer);
-        //   buffer.rewind();
-
-        //   // If the connection is dead, remove it from the selector
-        //   // and close it
-
-        // } catch( IOException ie ) {
-
-        //   // On exception, remove this channel from the selector
-        //   key.cancel();
-
-        //   try {
-        //     sc.close();
-        //   } catch( IOException ie2 ) { System.out.println( ie2 ); }
-
-        //   System.out.println( "Closed "+sc );
-        // }
-        cont++;
+    if(sc.keyFor(selector).attachment() == null) {
+      String nick_name = decoder.decode(buffer).toString();
+      nick_name = nick_name.replace("\n", "").replace("\r", "");
+      sc.keyFor(selector).attach(nick_name);
+      System.out.println("User " + sc.getRemoteAddress() + " has now: " + nick_name + " as nick_name");
+      sc.write(ByteBuffer.wrap(new String("You have now: " + nick_name + " as nick_name\n").getBytes(charset)));
+      return true;
     }
 
+    // buffer.clear();
+    // sc.read( buffer );
+    // buffer.flip();
 
-
-
-
-
-
-
-  // Por que essa parte nao é executada quando se executa o comando sc.write(buffer)?
     // If no data, close the connection
-    // if (buffer.limit()==0) {
-    //   return false;
-    // }
+    if (buffer.limit()==0) {
+      return false;
+    }
 
-    // // Decode and print the message to stdout
-    // String message = decoder.decode(buffer).toString();
+    // Decode and print the message to stdout
+    String message = "@" + sc.keyFor(selector).attachment() + ": " + decoder.decode(buffer).toString();
 
-    // // sc.write(buffer);
+    ByteBuffer bufferTmp = ByteBuffer.allocate( 16384 );
 
-    // System.out.print( message );
+    bufferTmp = ByteBuffer.wrap(message.getBytes(charset));
+
+    selector.wakeup();
+    Set<SelectionKey> keys = selector.keys();
+    Iterator<SelectionKey> it = keys.iterator();
+
+    // System.out.println(keys);
+    // it.next();
+
+    // System.out.println("Start:------------");
+    
+    while (it.hasNext()) {
+      SelectionKey key = it.next();
+
+      // Get a key representing one of bits of I/O activity
+      // System.out.println("Hello:");
+      // System.out.println(key);
+
+      SocketChannel tmp = null;
+
+      try {
+        // It's incoming data on a connection -- process it
+        tmp = (SocketChannel)key.channel();
+        tmp.configureBlocking(false);
+        
+        while(bufferTmp.hasRemaining())
+          tmp.write(bufferTmp);
+        bufferTmp.rewind();
+      }catch(Exception ex) {
+        // System.out.println("ERROR: Failed to write.");
+      }
+      
+    }
+  
+    // System.out.println("End------------");
 
     return true;
   }
+
+  // // Just read the message from the socket and send it to stdout
+  // static private boolean processInput( SocketChannel sc, Selector selector ) throws IOException {
+  //   // Read the message to the buffer
+  //   buffer.clear();
+  //   sc.read( buffer );
+  //   buffer.flip();
+
+  //   // If no data, close the connection
+  //   if (buffer.limit()==0) {
+  //     return false;
+  //   }
+
+  //   // Decode and print the message to stdout
+  //   String message = decoder.decode(buffer).toString();
+  //   // System.out.print( message );
+    
+  //   // buffer.rewind();
+
+  //   // while(buffer.hasRemaining()) {
+  //   //     sc.write(buffer);
+  //   // }
+
+  //   // ByteBuffer tmp = null;
+  //   // selector.wakeup();
+  //   Set<SelectionKey> keys = selector.keys();
+  //   Iterator<SelectionKey> it = keys.iterator();
+    
+  //   // it.next();
+  //   while (it.hasNext()) {
+  //     // Get a key representing one of bits of I/O activity
+  //     SelectionKey key = it.next();
+  //     System.out.println(key);
+
+  //     if(key.isAcceptable()) {
+  //       continue;
+  //     }
+
+  //     SocketChannel scTmp = (SocketChannel)key.channel();
+      
+  //     scTmp.configureBlocking( false );
+
+  //     // if(key.isWritable()) {
+  //     //   // ByteBuffer.wrap(msg.getBytes(charset));
+  //     //   tmp = ByteBuffer.wrap(message.getBytes(charset));
+  //     //   while(tmp.hasRemaining()) {
+  //     //       scTmp.write(tmp);
+  //     //   }
+  //     // }
+      
+  //     while(buffer.hasRemaining()) {
+  //       scTmp.write(buffer);
+  //     }
+      
+  //     buffer.rewind();
+  //   }
+      
+  //   return true;
+  // }
 }
